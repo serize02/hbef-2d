@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 
 import joblib
@@ -7,6 +8,8 @@ from sklearn.ensemble import GradientBoostingRegressor
 from torchvision import transforms
 
 from src.hbef import HBEF, GBRSignedEP, Resnet50UnetSegLayer2d
+
+warnings.filterwarnings('ignore')
 
 if __name__ == "__main__":
 
@@ -31,14 +34,14 @@ if __name__ == "__main__":
             )
         )
 
-        y_pred = hbef.predict(
-            file_path='path to your .avi file',
+        pred = hbef.predict(
+            test=list(Path('test/').glob("*.avi")),
             output_dir = Path('inference'),
             verbose=True,
             overlay_color=(114, 6, 20)
         )
 
-        print(y_pred)
+        print(pred)
 
     except FileNotFoundError:
         print('no artifacts found :( use download_artifacts.py before running this script')

@@ -10,9 +10,11 @@ import numpy as np
 
 from src.hbef.seglayer2d import Resnet50UnetSegLayer2d, Seg2dInfer, SegLayer2d
 from src.hbef.signedep import GBRSignedEP, SignedEP
+from src.hbef.misc import cpuspin
 
 __all__ = ['Resnet50UnetSegLayer2d', 'GBRSignedEP']
 
+PathLike = tp.Union[str, Path]
 
 class HBEF:
     def __init__(self, seglayer: SegLayer2d, signedep: SignedEP) -> None:
@@ -21,30 +23,37 @@ class HBEF:
 
     def predict(
         self, 
-        file_path: tp.Union[str, Path], 
+        test: tp.Union[PathLike, tp.List[PathLike]], 
         output_dir: tp.Union[str, Path] = Path('inference'),
         verbose: bool = False, 
         overlay_color: tp.Tuple[int, int, int] = (114, 6, 20)   
     ) -> tp.Tuple[np.float16, np.float16]:
-        file_path = Path(file_path)
-        cap: cv2.VideoCapture = self._load_video(file_path)
-        frames, fps, w, h = self._get_frame_sequence(cap)
-        seginfer: Seg2dInfer = self._seglayer.predict(frames)
-        signed_error = self._signedep.predict(seginfer)
+        
+        if isinstance(test, (str, Path)):
+            test = [test]
 
-        if verbose:
-            output_dir.mkdir(exist_ok=True)
-            video_writer = cv2.VideoWriter(str(output_dir / file_path.name), cv2.VideoWriter_fourcc(*'XVID'), fps, (w, h))
-            for idx in range(0, len(frames)):
-                fvis = cv2.cvtColor(frames[idx], cv2.COLOR_GRAY2BGR)
-                mask_overlay = np.zeros_like(fvis)
-                mask_overlay[seginfer.segmasks[idx] == 1] = overlay_color
-                blended = cv2.addWeighted(fvis, 1.0, mask_overlay, 1.0, 0)
-                video_writer.write(blended)
-            video_writer.release()
-            cap.release()
+        pred: tp.List[tp.Tuple[np.float16, np.float16]] = []
+        with cpuspin(test, desc="hbef-[pred]") as spin:
+            for fpath in spin:
+                fpath = Path(fpath)
+                cap: cv2.VideoCapture = self._load_video(fpath)
+                frames, fps, w, h = self._get_frame_sequence(cap)
+                seginfer: Seg2dInfer = self._seglayer.predict(frames)
+                signed_error = self._signedep.predict(seginfer)
+                if verbose:
+                    output_dir.mkdir(exist_ok=True)
+                    video_writer = cv2.VideoWriter(str(output_dir / fpath.name), cv2.VideoWriter_fourcc(*'XVID'), fps, (w, h))
+                    for idx in range(0, len(frames)):
+                        fvis = cv2.cvtColor(frames[idx], cv2.COLOR_GRAY2BGR)
+                        mask_overlay = np.zeros_like(fvis)
+                        mask_overlay[seginfer.segmasks[idx] == 1] = overlay_color
+                        blended = cv2.addWeighted(fvis, 1.0, mask_overlay, 1.0, 0)
+                        video_writer.write(blended)
+                    video_writer.release()
+                    cap.release()
 
-        return seginfer.ef, signed_error
+                pred.append((seginfer.ef, signed_error))
+        return pred
 
     def _load_video(self, file_path: Path) -> cv2.VideoCapture:
         if not file_path.is_file():
