@@ -35,8 +35,6 @@ After installing `uv`, sync the project environment:
 uv sync
 ```
 
-This command installs all dependencies and creates a virtual environment as specified in your project configuration.
-
 ## Usage
 
 Once synced, activate the environment
